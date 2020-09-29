@@ -69,50 +69,28 @@ We define interfaces as below
 
 \clearpage
 
-\textbf{Assumptions: } \co|int| is the type of int and \co{...int} is the type of a sequence of int. Also \co|T{args}| is a generic type, with respect to \co{args} that are parameters that can be both types and values (like Julia generics and C++ templates).
-
 \textbf{Types: }
 \begin{itemize}
-    \item \co|H| is the type that represents a Hilbert space. 
-	\item \co|Ket{dims: ...int}| which represents a vector in the Hilbert space of $\mathcal{H} := \bigotimes_{i = 1}^n \mathcal{H}_i$ where $\dim \mathcal{H}_i = \text{\co|dims[i]|}$
-    \item \co|Bra{dims: ...int}| which represents a vector in dual space of $\mathcal{H}$ (a.k.a. $\mathcal{H}^*$)
-    \item \co|Op{dims: ...int}| which represents a linear operator on $\mathcal{H}$
+    \item \co|H| is the type that represents a Hilbert space (tensorproduct spaces are not counted in).
+	\item \co|Tensor| which represents a vector in a set/list of Hilbert spaces.
 \end{itemize}
 
-Surely, this generic parameters are not the necessary part of this design, as it's not implementable in many languages. They are mention here to present a better (and more restricted) structure at the first galance and can be easily ignored in the implementation.
-
-\textbf{Functions / Operators: }
+\textbf{Functional: }
 
 \begin{itemize}
-	\item \co|o(a: Vector, b: Vector) : Vector|
+	\item \co|conj(H) -> H|
+        somehow that \co|conj(conj(H)) = H| and \co|conj(H)| \(\ne\) \co|H|
+	\item \co|H(dim: Int) -> H|
+    \item \co|dim(Tensor) -> Int|
+	\item \co|Tensor * Tensor -> Tensor|
+	\item \co|conj(Tensor) -> Tensor|
+	\item \co|tr(Tensor) -> Tensor|
 \end{itemize}
-\begin{lstlisting}
 
+\textbf{Structural: }
 
-Functions:
-- ket{dim: int}(i: int) -> Ket{dim}
-- bra{dim: int}(i: int) -> Ket{dim}
-- conj(k: Ket{seq}) -> Bra{seq}
-- conj(b: Bra{seq}) -> Ket{seq}
-- conj(o: Op{seq}) -> Op{seq}
-- permute{perm: ...int}(k: Ket{seq}) -> Ket{seq[perm[0]], seq[perm[1]], ...}
+\textbf{Example}
 
-Operators:
-s : Complex , k : Ket{seq}, b: Bra{seq} o: Op{seq}
-s * k -> Ket{seq}
-    |-> a * b = Bra{seq}
-
-    |-> b * k : Complex
-    |-> k * b : Op{seq}
-    |-> b * o : Bra{seq}
-    |-> o * k : Ket{seq}
-    
-k1, k2: Ket{...}
-    |-> k1 + k2 : Ket{...}
-
-k1: Ket{s1}, k2: Ket{s2}
-    |-> k1 o k2 : Ket{s1 . s2}
-\end{lstlisting}
 with the following rules
 
 \subsection{Core}
