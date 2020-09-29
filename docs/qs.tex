@@ -1,9 +1,12 @@
+
 \documentclass[a4paper,11pt]{article}
 
 \usepackage{physics}
 
 \usepackage{listings}
-\lstset{basicstyle=\ttfamily}
+\lstset{
+    basicstyle=\ttfamily
+}
 \def\co{\lstinline}
 
 \title{$\mu$, A Minimal Patch for Quantum Computation, Information and Foundation}
@@ -70,30 +73,39 @@ We define interfaces as below
 
 \textbf{Types: }
 \begin{itemize}
+    \item \co|H| is the type that represents a Hilbert space. 
 	\item \co|Ket{dims: ...int}| which represents a vector in the Hilbert space of $\mathcal{H} := \bigotimes_{i = 1}^n \mathcal{H}_i$ where $\dim \mathcal{H}_i = \text{\co|dims[i]|}$
-    \item \co|Bra{dims: ...int}| which represents a vector in dual space of $\mathcal{H}$ (a.k.a. $\mathcal{H}*$)
+    \item \co|Bra{dims: ...int}| which represents a vector in dual space of $\mathcal{H}$ (a.k.a. $\mathcal{H}^*$)
     \item \co|Op{dims: ...int}| which represents a linear operator on $\mathcal{H}$
+\end{itemize}
+
+Surely, this generic parameters are not the necessary part of this design, as it's not implementable in many languages. They are mention here to present a better (and more restricted) structure at the first galance and can be easily ignored in the implementation.
+
+\textbf{Functions / Operators: }
+
+\begin{itemize}
+	\item \co|o(a: Vector, b: Vector) : Vector|
 \end{itemize}
 \begin{lstlisting}
 
-\textbf{Functions: }
 
 Functions:
 - ket{dim: int}(i: int) -> Ket{dim}
 - bra{dim: int}(i: int) -> Ket{dim}
 - conj(k: Ket{seq}) -> Bra{seq}
 - conj(b: Bra{seq}) -> Ket{seq}
-- conj(o: Op{seq}) -> Opseq}
+- conj(o: Op{seq}) -> Op{seq}
+- permute{perm: ...int}(k: Ket{seq}) -> Ket{seq[perm[0]], seq[perm[1]], ...}
 
 Operators:
-a : Complex , k : Ket{...}, b: Bra{...}, o: Op{...}
-    |-> a * k = Ket{...}
-    |-> a * b = Bra{...}
+s : Complex , k : Ket{seq}, b: Bra{seq} o: Op{seq}
+s * k -> Ket{seq}
+    |-> a * b = Bra{seq}
 
     |-> b * k : Complex
-    |-> k * b : Op{...}
-    |-> b * o : Bra{...}
-    |-> o * k : Ket{...}
+    |-> k * b : Op{seq}
+    |-> b * o : Bra{seq}
+    |-> o * k : Ket{seq}
     
 k1, k2: Ket{...}
     |-> k1 + k2 : Ket{...}
