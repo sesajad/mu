@@ -1,8 +1,9 @@
 # pure model
 abstract type PureState{T} end 	# T -> Complex 		# norm vector
 
-abstract type Evolution{T} end 	# T -> PureState{T} 	# unitary
-abstract type Basis{T, V} end 	# V -> PureState{T} 	# unitary
+abstract type UnitaryMap{T, V} end 	# V -> PureState{T} 	# unitary
+abstract type Evolution{T} <: UnitaryMap{T, T} end 	# a special case of UnitaryMap
+
 
 abstract type Operator{T} end 	# T x T -> Complex	# hermitian
 				# PureState{T} -> Real  
@@ -50,22 +51,22 @@ abstract type VirtualMixedState{T} end
 include("hilbert.jl")
 
 struct QVal{T} <: PureState{T}
-    vec ::Ket                           # must match dimension
+    vec ::Tensor                           # must match dimension
     
 end
 
 struct QMap{T, V} <: Basis{T, V}
-    matrix ::Gate
+    matrix ::Tensor
 end
 
 struct QOp{T} <: QMap{T, T}, Evolution{T}, Operator{T}
 end
 
-struct QMeasure{T}
-    set ::Map{Operator, F}
+struct QMeasure{T, F}
+    set ::Vector{Tuple{Operator, F}}
 end
 
-abstract type Q{T} <: VirtualPureState{T} end
+type Q{T} <: VirtualPureState{T} end
 mutable struct VariableAddress{T} <: Q{T]
     block ::Int8
     dim ::Range
@@ -84,8 +85,7 @@ struct RotateAddress{T} <: Q{T}
     matrix ::Gate
 end
 
-block = []
-registry = []
+blocks = []
 
 function q(t ::T) ::Q{T} where {T}
     register!(QVal(ket(index(t), n=size(T))))

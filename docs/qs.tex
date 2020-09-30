@@ -9,7 +9,10 @@
 }
 \def\co{\lstinline}
 
-\title{$\mu$, A Minimal Patch for Quantum Computation, Information and Foundation}
+\usepackage{biblatex}
+\addbibresource{qs.bib}
+
+\title{\(\mu\), A Minimal Patch for Quantum Computation, Information and Foundation}
 \author{Sajad}
 \date{\today}
 
@@ -31,20 +34,22 @@ The process of design, presented specifications and details of implementation is
 
 \section{Introduction}
 
-This text, assumes you have proper knowledge in quantum computing, about an introductory course such as [Nilson and Cheng book] or [Vahid lecturenotes...].
+This text, assumes you have proper knowledge in quantum computing. If you don't, you can read \cite{neilson} or any other standard books.
 
 \section{Purpose}
 \begin{itemize}
 \item Easier way to write, read and understand QC algorithms
 
-The way we write down quantum algorithms felt to be not a projection of what we understand from them. Often learning every single quantum algorithm need to be a task. That's maybe not just for its intrinsic hardness, and the way we often propose algorithms (mathematics for the definition of gates, and a circuit for its sequence) is disjointed and hard to follow. Maybe a more concrete way to represent makes them easier to understand, modify, and generalize.
+The way we write down quantum algorithms is seemed to be not a projection of what we understand from them. Often learning every single quantum algorithm need to be a task. That's maybe not just for its intrinsic hardness, and the way we often propose algorithms (mathematics for the definition of gates, and a circuit for its sequence) is disjointed and hard to follow. Maybe a more concrete way to represent makes them easier to understand, modify, and generalize.
 
+For that reason, we need to just an standard way to write down a psuedo that uniquely specifies the algorithm. But other purposes give us the reason why we need to implement such thing.
 
 \item Intuitive definition and computation for scientists
-% TODO
-\textbf{NOT COMPLETED}
-First, addressing the needs of scientists (mathematicians and physicists) to simulate and compute,
-Then just a standard form to describe things in a quantum manner.
+
+People with mathematical backgrounds (mathematicians and physicists) are often having hard time learning a simulation/expermental tool, specially when it's designed by developers. this came from the different intuitions that these two groups have.
+A simulation/experimental tool must be at the same abstraction level that scientists are familiar with to be a comfortable. Another point is that, some may belive that modules and organizing functionalities in group are not compatible with scientific idea of solving problem, it may be correct, but it's clear that ability of importing and having all tools together, is not necessarily logically in contract with organizing them as groups at the first place.
+
+It's not necessary to point that using the scientific terms, operators, and functions are the baseline to do to make it scientist-friendly. 
 
 \item a Swiss army knife, not a giant supertool
 % TODO
@@ -61,37 +66,81 @@ Fully understandable for developers, engineers and scientists.
 \section{Design}
 
 \subsection{Basic Hilbert Space Interface (BHSF)}
-Before getting into the patch, a library of common actions on Hilbert spaces is necessary.
 
-Structurally, BHSF is guessed defined be over a BLAS.
+Before gettin into the main subject, we offer a library with a common set of actions on 
+Hilbert space.
+This is like the effort people made before to design BLAS (Basic linear algebra system),
+defining fundamental tools that are necessary for those kind of computations.
 
-We define interfaces as below
+Structurally, BHSF is guessed defined be over a BLAS. Here we just define the interface
+in term of types, functions and a brief structure (which is technically implmentation, not definition)
 
-\clearpage
 
 \textbf{Types: }
 \begin{itemize}
-    \item \co|H| is the type that represents a Hilbert space (tensorproduct spaces are not counted in).
-	\item \co|Tensor| which represents a vector in a set/list of Hilbert spaces.
+    \item \co|H| is the type that represents a single Hilbert space (tensor-product spaces are not counted in).
+	\item \co|Vector| which represents a vector in a set/list of Hilbert spaces.
 \end{itemize}
 
-\textbf{Functional: }
+\textbf{Functions: }
 
 \begin{itemize}
-	\item \co|conj(H) -> H|
-        somehow that \co|conj(conj(H)) = H| and \co|conj(H)| \(\ne\) \co|H|
-	\item \co|H(dim: Int) -> H|
-    \item \co|dim(Tensor) -> Int|
-	\item \co|Tensor * Tensor -> Tensor|
-	\item \co|conj(Tensor) -> Tensor|
-	\item \co|tr(Tensor) -> Tensor|
+	\item \co|dual(H)| \(\to\) \co|H|:
+	    This function, returns dual of the space. This is useful because an operator on \co|H| is like a vector in the \co|dual(H)| \(\otimes\) \co|H|. So we ask this function to satisfy these two, \co|dual(H)| \(\ne\) \co|H| and \co|dual(dual(H))| \(\ne\) \co|H|.%
+	    \footnote{We know that mathematically \(H^{**}\) double dual of a space is not equal but isomorphic to itself.
+            This fact is useful in the implementaton of a general library to support channels and superoperators with a simple dirac-like notation.}
+    \item \co|idual(H)| \(\to\) \co|H|:
+        inverse of the \co|dual|.
+    \item \co|dim(H)| \(\to\) \co|Int|:
+        Returns dimension of the \co|H|.
+    \item \co|space(Vector)| \(\to\) \co|List[H]|:
+        This function returns list of Hilbert spaces that this vector belongs to tensor product of them.
+        This is just used to discuss other functions. 
+	\item \co|dual(Vector)| \(\to\) \co|Vector|:
+	    This function returns dual of the vector.
+	\item \co|idual(Vector)| \(\to\) \co|Vector|:
+	    This function returns inverse dual of the vector.
+	\item \co|pnorm(Vector, p: Real) -> Real|:
+	    This function returns $\ell^p$-norm of the vector.
+	\item \co|tr(Vector) -> Vector|:
+	    \item \co|Vector + Vector -> Vector|: addition of two vector.
+    
 \end{itemize}
+\textbf{Operators: }
+\begin{itemize}
+    \item \co|Vector * Vector| \(\to\) \co|Vector|: 
+	    Tensor contraction with dirac notation. It means that for \co|a, b: Vector|, 
+	    If \co|space(a)| = \co|[dual(H)]| and \co|space(b)| = \co|[H]| then \co|space(a * b)| = \co|[]| and \co|space(b * a)| = \co|[dual(H), H]|. And obviously if \co|space(a)| = \co|[|\(\mathcal{H}_1\)\co|]|  and \co|space(b)| = \co|[|\(\mathcal{H}_2\)\co|]|
+	    then \co|space(a * b)| = \co|space(a * b)| = \co|[|\(\mathcal{H}_1\)\co|, |\(\mathcal{H}_1\)\co|]|.
+	\item \co|Vector - Vector| \(\to\) \co|Vector|: subtraction of two vector.  
+    \item \co|Vector * Complex| \(\to\) \co|Vector|
+    \item \co|Complex * Vector| \(\to\) \co|Vector|
+    \item \co|Vector / Complex| \(\to\) \co|Vector|: scalar multiplication and division.
+    
+\end{itemize}
+\textbf{Conversions: }
 
-\textbf{Structural: }
+\begin{itemize}
+	\item \co|Vector| \(\leftrightarrow\) \co|Complex|: vectors \co|v| with \co|space(v)| = \co|[]|, are isomorphic to complex numbers.
+\end{itemize}
+\textbf{Constructors: }
+\begin{itemize}
+	\item \co|H(dim: Int)| \(\to\) \co|H|: For constructing \co|H| from its dimension.
+	\item \co|Vector(v: List[Complex], H)| \(\to\) \co|Vector|: This function constructs a vector from a list of coefficents each corresponds to each basis of \co|H|, it's like $\sum_i v_i \ket{i}$
+\end{itemize}
 
 \textbf{Example}
 
-with the following rules
+The following psuedo-code shows the functionality of BHSF.
+
+\begin{lstlisting}
+h = H(3)
+v1 = Vector([1,0,0], h)
+v2 = Vector([0,1,0], h)
+
+dual(v1) * v2) ; same as <v1|v2>
+v1 * dual(v2)  ; same as |v1> <v2|
+\end{lstlisting}
 
 \subsection{Core}
 
