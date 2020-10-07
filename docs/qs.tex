@@ -22,7 +22,7 @@
 
 
 \begin{abstract}
-Today, as quantum computing is trending more and more, while companies and universities are making different tools for different purposes, the lack of a general-purpose, well-designed, and futuristic programming language is felt. 
+Today, as quantum computing is trending more and more, while companies and universities are making different tools for different purposes, the lack of a general-purpose, well-designed, and futuristic programming language is felt.
 Here is a try to design a patch to be added to (almost) any programming language to make it support quantum algorithms and simulations. Moreover, this definition may help to represent clearer not only quantum algorithms but also many other problems in quantum.
 Although the design process was inspired by theoretical computer science concepts, specifically PL concepts, it tries to be intuitive and friendly for mathematicians and physicists.
 The process of design, presented specifications and details of implementation is discussed in this paper. While the real examples are available at Github.
@@ -49,12 +49,13 @@ For that reason, we need to just an standard way to write down a psuedo that uni
 People with mathematical backgrounds (mathematicians and physicists) are often having hard time learning a simulation/expermental tool, specially when it's designed by developers. this came from the different intuitions that these two groups have.
 A simulation/experimental tool must be at the same abstraction level that scientists are familiar with to be a comfortable. Another point is that, some may belive that modules and organizing functionalities in group are not compatible with scientific idea of solving problem, it may be correct, but it's clear that ability of importing and having all tools together, is not necessarily logically in contract with organizing them as groups at the first place.
 
-It's not necessary to point that using the scientific terms, operators, and functions are the baseline to do to make it scientist-friendly. 
+It's not necessary to point that using the scientific terms, operators, and functions are the baseline to do to make it scientist-friendly.
 
 \item a Swiss army knife, not a giant supertool
 % TODO
+
 \textbf{NOT COMPLETED}
-A minimal and complete set of tools, 
+A minimal and complete set of tools,
 
 Fully understandable for developers, engineers and scientists.
 
@@ -67,7 +68,7 @@ Fully understandable for developers, engineers and scientists.
 
 \subsection{Basic Hilbert Space Interface (BHSF)}
 
-Before gettin into the main subject, we offer a library with a common set of actions on 
+Before gettin into the main subject, we offer a library with a common set of actions on
 Hilbert space.
 This is like the effort people made before to design BLAS (Basic linear algebra system),
 defining fundamental tools that are necessary for those kind of computations.
@@ -86,7 +87,9 @@ in term of types, functions and a brief structure (which is technically implment
 
 \begin{itemize}
 	\item \co|dual(H)| \(\to\) \co|H|:
-	    This function, returns dual of the space. This is useful because an operator on \co|H| is like a vector in the \co|dual(H)| \(\otimes\) \co|H|. So we ask this function to satisfy these two, \co|dual(H)| \(\ne\) \co|H| and \co|dual(dual(H))| \(\ne\) \co|H|.%
+	    This function, returns dual of the space. This is useful because an operator on \co|H| is like a vector in the \co|dual(H)| \(\otimes\) \co|H|.
+
+	    So we ask this function to satisfy \co|dual(H)| \(\ne\) \co|H| and \co|dual(dual(H))| \(\ne\) \co|H|.%
 	    \footnote{We know that mathematically \(H^{**}\) double dual of a space is not equal but isomorphic to itself.
             This fact is useful in the implementaton of a general library to support channels and superoperators with a simple dirac-like notation.}
     \item \co|idual(H)| \(\to\) \co|H|:
@@ -95,35 +98,40 @@ in term of types, functions and a brief structure (which is technically implment
         Returns dimension of the \co|H|.
     \item \co|space(Vector)| \(\to\) \co|List[H]|:
         This function returns list of Hilbert spaces that this vector belongs to tensor product of them.
-        This is just used to discuss other functions. 
+        This is just used to discuss other functions.%
+        \footnote{Although we ignore the isomorphism between \(H^{**}\) and \(H\), we use this fact that $H_A \otimes H_B$ is ismorphic to $H_B \otimes H_A$ and we assume the isomporphism is identity. therefore \co|space| function will not guarantee the order.}
 	\item \co|dual(Vector)| \(\to\) \co|Vector|:
 	    This function returns dual of the vector.
 	\item \co|idual(Vector)| \(\to\) \co|Vector|:
 	    This function returns inverse dual of the vector.
-	\item \co|pnorm(Vector, p: Real) -> Real|:
+	\item \co|pnorm(Vector, p: Real)| \(\to\) \co|Real|:
 	    This function returns $\ell^p$-norm of the vector.
-	\item \co|tr(Vector) -> Vector|:
-	    \item \co|Vector + Vector -> Vector|: addition of two vector.
-    
+	\item \co|tr(Vector, List[H])| \(\to\) \co|Vector|:
+	    Trace of the vector over a list of Hilbert spaces.
 \end{itemize}
+
 \textbf{Operators: }
+
 \begin{itemize}
-    \item \co|Vector * Vector| \(\to\) \co|Vector|: 
-	    Tensor contraction with dirac notation. It means that for \co|a, b: Vector|, 
+    \item \co|Vector * Vector| \(\to\) \co|Vector|:
+	    Tensor contraction similar to dirac notation. It means that for \co|a, b: Vector|,
 	    If \co|space(a)| = \co|[dual(H)]| and \co|space(b)| = \co|[H]| then \co|space(a * b)| = \co|[]| and \co|space(b * a)| = \co|[dual(H), H]|. And obviously if \co|space(a)| = \co|[|\(\mathcal{H}_1\)\co|]|  and \co|space(b)| = \co|[|\(\mathcal{H}_2\)\co|]|
 	    then \co|space(a * b)| = \co|space(a * b)| = \co|[|\(\mathcal{H}_1\)\co|, |\(\mathcal{H}_1\)\co|]|.
-	\item \co|Vector - Vector| \(\to\) \co|Vector|: subtraction of two vector.  
+	\item \co|Vector - Vector| \(\to\) \co|Vector|: subtraction of two vector.
     \item \co|Vector * Complex| \(\to\) \co|Vector|
     \item \co|Complex * Vector| \(\to\) \co|Vector|
     \item \co|Vector / Complex| \(\to\) \co|Vector|: scalar multiplication and division.
-    
+
 \end{itemize}
+
 \textbf{Conversions: }
 
 \begin{itemize}
 	\item \co|Vector| \(\leftrightarrow\) \co|Complex|: vectors \co|v| with \co|space(v)| = \co|[]|, are isomorphic to complex numbers.
 \end{itemize}
+
 \textbf{Constructors: }
+
 \begin{itemize}
 	\item \co|H(dim: Int)| \(\to\) \co|H|: For constructing \co|H| from its dimension.
 	\item \co|Vector(v: List[Complex], H)| \(\to\) \co|Vector|: This function constructs a vector from a list of coefficents each corresponds to each basis of \co|H|, it's like $\sum_i v_i \ket{i}$
@@ -160,13 +168,13 @@ A more quantum view, is to use another basis (the same or of another type, but w
 
 \subsubsection{Multiview Type}
 
-When we have a quantum hilbert space that we can assign different basis to it, while we shall not promote one of them as the main, we can use union, an old abondened tool in programming. But if you're not familiar with it, we just use a compound structure, assigning different basis views to its fields. 
+When we have a quantum hilbert space that we can assign different basis to it, while we shall not promote one of them as the main, we can use union, an old abondened tool in programming. But if you're not familiar with it, we just use a compound structure, assigning different basis views to its fields.
 
 \subsubsection{Mutability}
 
 This are not mutable, but this is not bad, non-copying principle is not compatible with copying in closure and more in immutable functional programming.
 
-but in another hand we can present another meaning for mutability / immutability, 
+but in another hand we can present another meaning for mutability / immutability,
 views can be read-only or read-write, those we can set them mutable / immutable.
 
 \subsubsection{Move Semantic}
@@ -175,7 +183,7 @@ views can be read-only or read-write, those we can set them mutable / immutable.
 Just by using match-case and some automatically applied castings, it can be intuitively written.
 
 \subsection{Code as Operators}
-As a beloved target, codes in the operators that are enslaved within lambda expression, may can be freely written. 
+As a beloved target, codes in the operators that are enslaved within lambda expression, may can be freely written.
 
 \section{Implementation}
 \subsection{Julia}
@@ -185,30 +193,28 @@ As a beloved target, codes in the operators that are enslaved within lambda expr
 
 \begin{lstlisting}
 
-// pure function
-bool BV<n>(f: pure(Z<2>, Z<2>^<n>)) {
-    q<bit[n]> vec; // somehow set to zeros
-    q<bit> res;
-    vec.each(x => x -> H);
+def BV(func, n)
+    inputs = Q((0, ) * n)
+    result = Q(false)
     
-    gate oracle = (x, y) => y + f(x);
-    // then gate become a H<Z2^n> x H<Z2> operator
-    (vec, res) -> oracle
+    for i in inputs:
+        i = i.apply(u(lambda x: ket(0) + (-1) ** x * ket(1)))
     
-    return res -> measure; 
-}
+    result = t(result, inputs).apply(u(lambda (x, y) : y + func(x))
+    
+    return result.measure() 
 
-gate<n> fourier = match n 
-    case 0: 
+gate<n> fourier = match n
+    case 0:
     otherwise: fourier<n - 1>
-    
+
 optional<T> grover(f: pure<bool, T>, init: set<T>, real p) {
     q<T> vec = init;
-    
+
     gate reflect = x: T => match x
         f(x) ==1, 1
                   -1
-    
+
     vec -> (reflect f)^(1/p)
     T res = vec -> measure
     if f(res)
@@ -224,7 +230,7 @@ real QAOA<T> problem(f: pure<bit[], real>, int level) {
     vec -> exp(iC) -> exp(iB)
 }
 
-real annealing(f: problem, 
+real annealing(f: problem,
 
 \end{lstlisting}
 

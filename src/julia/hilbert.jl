@@ -1,5 +1,7 @@
 import Base:*, ==, +, -, /, conj, convert
 
+import LinearAlgebra:I
+
 using Test
 
 const TT = ComplexF64
@@ -10,34 +12,32 @@ const TT = ComplexF64
 
 # this structure is the unqiue identifier of each hilbert space
 # note that this is an internal structure.
-struct Hid
-    dim ::Int
-end
 
 struct H
-    ref ::Hid
+    uid ::UInt
+    dim ::Int
     duality ::Int
 end
 
-H(dim ::Int) ::H = H(Hid(dim), 0)
-dim(h ::H) ::Int = h.ref.dim
+H(dim ::Int) ::H = H(rand(UInt), dim, 0)
+dim(h ::H) ::Int = h.dim
 
 @testset "H definition" begin
         @test dim(H(4)) == 4
     end
 
-dual(h ::H) ::H = H(h.ref, h.duality + 1)
-# assuming duality > 0
-idual(h ::H) ::H = H(h.ref, h.duality - 1)
+dual(h ::H) ::H = H(h.uid, h.dim, h.duality + 1)
 
-# conj(h ::H) ::H = H(h.ref, 1 - h.duality)
+idual(h ::H) ::H = H(h.uid, h.dim, h.duality - 1)
+
+# conj(h ::H) ::H = (h.uid, h.dim, 1 - h.duality)
 # assumming h.duality is in {0, 1}
 
-hash(h ::H) ::UInt = objectid(h.ref) + 100000007 * h.duality
+hash(h ::H) ::UInt = h.uid + 100000007 * h.duality
 
 
 function ==(a ::H, b ::H)
-    a.duality == b.duality && a.ref == b.ref
+    a.duality == b.duality && a.uid == b.uid
 end
 
 @testset "hash and equality of H" begin
@@ -62,18 +62,22 @@ struct Tensor
 end
 
 function Tensor(value ::Array{T, n}, hs ::Vector{H}) ::Tensor where {T <: Number, n}
+    # WARN not works with duplicate H in t
     Tensor(convert(Array{TT, n}, value), Dict(v => i for (i, v) in enumerate(hs)), hs)
 end
 
-rank(t ::Tensor) ::Int = length(t.dim_index)
+space(t ::Tensor) ::Vector{H} = t.dim_index
+
+order(t ::Tensor) ::Int = length(t.dim_index)
 
 @testset "Tensor definition" begin
         h = H(2)
         t = Tensor([1, 0], [h])
-        @test rank(t) == 1
+        @test order(t) == 1
     end
 
 function *(a ::Tensor, b ::Tensor) ::Tensor
+    # WARN not works with duplicate H in t
     common_hs = [(aa, bb) for aa in a.dim_index
         for bb in b.dim_index if aa == dual(bb)]
 
@@ -91,7 +95,7 @@ function *(a ::Tensor, b ::Tensor) ::Tensor
         (prod([dim(hc) for (_, hc) in common_hs]), prod([dim(h) for h in b_hs])))
 
     c_value = a_value * b_value
-    reshape(c_value, ([dim(h) for h in a_hs]..., [dim(h) for h in b_hs]...))
+    c_value = reshape(c_value, ([dim(h) for h in a_hs]..., [dim(h) for h in b_hs]...))
 
     Tensor(c_value, vcat(a_hs, b_hs))
 end
@@ -113,8 +117,8 @@ idual(t ::Tensor) ::Tensor = Tensor(conj(t.value), [idual(h) for h in t.dim_inde
 @testset "Tensor basic operations" begin
         h = H(2)
         k = Tensor([1, 0], [h])
-        @test rank(k * dual(k)) == 2
-        @test rank(dual(k) * k) == 0
+        @test order(k * dual(k)) == 2
+        @test order(dual(k) * k) == 0
     end
 
 *(a ::Tensor, b ::Number) ::Tensor = Tensor(a.value * b, a.dim_sites, a.dim_index)
@@ -125,7 +129,7 @@ pnorm(t ::Tensor, p ::Int=2) ::Number = sum(vec(t.value) .^ p) ^ (1 / p)
 
 convert(::Type{Number}, t ::Tensor) ::Number = t.value[]
 
-@testset "Tensor rank-0/field operations" begin
+@testset "Tensor order-0/field operations" begin
         h = H(2)
         k0 = Tensor([1, 0], [h])
         k1 = Tensor([0, 1], [h])
@@ -134,12 +138,46 @@ convert(::Type{Number}, t ::Tensor) ::Number = t.value[]
         @test pnorm(k0 - k0) == 0
     end
 
+function morph_tensor(from ::Vector{H}, to ::Vector{H}) ::Tensor
+    hs = [[dual(h) for h in from]..., to...]
+    # assert that prod-dim of from == prod-dim of to
+    d = prod([dim(h) for h in from])
+    idn = reshape(Matrix(I, d, d), Tuple(dim(h) for h in hs))
+    Tensor(idn, hs)
+end
 
-# generalizing tr, will lead us to make a tensor,
-# a second-rank tensor of non-numeric object, then try to
-# do the same operations as for matrices, such as tr, eigen, exp, log ...
+function morph(t ::Tensor, from ::Vector{H}, to ::Vector{H}) ::Tensor
+    # WARN not works with duplicate H in t
+    rem:: Vector{H} = [hh for hh in t.dim_index if !(hh in from)]
+    t_value = permutedims(t.value,
+        [[t.dim_sites[h] for h in rem]..., [t.dim_sites[f] for f in from]...])
+    t_value = reshape(t_value, ([dim(h) for h in rem]..., [dim(h) for h in to]...))
+    Tensor(t_value, [rem..., to...])
+end
+
+@testset "Hilbert space morphing" begin
+        h1 = H(4)
+        h2a = H(2)
+        h2b = H(2)
+        t = Tensor([1,0,1,0], [h1])
+        a1 = Tensor([1, 0], [dual(h2a)])
+        a2 = Tensor([1, 1], [h2b])
+
+        t2p = morph_tensor([h1], [h2a, h2b]) * t
+        @test pnorm((a1 * t2p) - a2) == 0
+
+        t2m = morph(t, [h1], [h2a, h2b])
+        @test pnorm((a1 * t2m) - a2) == 0
+    end
+
+# a more general and simple way to implement tr
+# other operations as for matrices, such as tr, eigen, exp, log ...
 
 # note that it take trace on each (h, dual(h)) pair spaces for h in hs.
+
+function tr_tensor(hs ::Vector{H}) ::Tensor
+    prod([Tensor(Matrix(I, dim(h), dim(h)), [dual(dual(h)), dual(h)]) for h in hs])
+end
 
 function tr(b ::Tensor, hs ::Vector{H}) ::Tensor
     if !isempty(hs)
@@ -148,7 +186,7 @@ function tr(b ::Tensor, hs ::Vector{H}) ::Tensor
             (h, dual(h)) : (dual(h), h)
         pre_i = repeat([:,], b.dim_sites[h] - 1)
         mid_i = repeat([:,], b.dim_sites[hc] - b.dim_sites[h] - 1)
-        post_i = repeat([:,], rank(b) - b.dim_sites[hc])
+        post_i = repeat([:,], order(b) - b.dim_sites[hc])
         tr_value = sum([b.value[pre_i..., i, mid_i..., i, post_i...] for i in 1:dim(h)])
         tr_index = [hh for hh in b.dim_index if !(hh in (h, hc))]
         if isempty(tr_index)
@@ -162,7 +200,10 @@ end
 
 @testset "Tensor maps operations" begin
         h = H(2)
-        k = Tensor([1, 0], [h])
-        @test convert(Number, tr(k * dual(k), [h])) == 1
+        k0 = Tensor([1, 0], [h])
+        k1 = Tensor([0, 1], [h])
+        op = k0 * dual(k0) + 0.5 * k1 * dual(k1)
+        @test convert(Number, tr(op, [h])) == 1.5
+        @test convert(Number, tr_tensor([h]) * op) == 1.5
     end
 
