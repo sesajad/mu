@@ -12,11 +12,11 @@
 # abstract type Measure{T, V} end # Set{(Operator, V)}	# operators must be positive
 
 # probabilistic model
-abstract type MixedState{T} end # Set{(PureState, Real)}
+# abstract type MixedState{T} end # Set{(PureState, Real)}
 
-abstract type Channel{T} end 	# MixedState{T} -> MixedState{T}
+# abstract type Channel{T} end 	# MixedState{T} -> MixedState{T}
 
-abstract type Dist{T} end 	# T -> Real
+# abstract type Dist{T} end 	# T -> Real
 
 # single-var functions
 # cast: T -> PureState{T}
@@ -59,108 +59,187 @@ abstract type Dist{T} end 	# T -> Real
 include("hilbert.jl")
 include("etypes.jl")
 
+# ===================
+# Hilbert Space Utilities for Typed Programming
+# ===================
 
-abstract type Q{T} end
+CH = Union{Vector, H} # a tree made of Hs
 
-struct QSimpleVar{T} <: Q{T}
-    block ::Int
-    h ::H
-end
+flatten(h ::H) ::Vector{H} = [h]
+flatten(ch ::Vector) ::Vector{H} = vcat([flatten(f) for f in ch]...)
 
-struct QComposite{T} <: Q{T}
-    qs ::Vector{Q}
-end
-
-hs(q ::QSimpleVar) = [q.h]
-hs(q ::QComposite) = [h for qq in q.qs for h in hs(qq)]
-
-function var(t ::T) ::Q{T} where {T}
-    register!(T, [tt == t ? 1 : 0 for tt in iter(T)])
-end
-
-function var(t ::Set{T}) ::Q{T} where {T}
-    register!(T, [tt in t ? 1 / sqrt(length(t)) : 0 for tt in iter(T)])
-end
-
-function var(f ::Function) ::Q{T} where {T} # t -> complex
-    register!(T, [f(tt) for tt in iter(T)])
-end
-
-blocks = Vector{Tensor}()
-registry = Vector{QSimpleVar}()
-
-function register_address!(t ::Type, block ::Int)
+function create_hilbert(t ::Type) ::CH
     if decompose(t) == t
-        var = QSimpleVar{t}(block, H(size(t)[1]))
-        push!(registry, var)
-        var
+        H(size(t)[1])
     else
-        QComposite{t}([register_address!(tt, block) for tt in decompose(t)])
+        [create_hilbert(x) for x in decompose(t)]
     end
 end
 
-function register!(t ::Type{T}, val::Array) ::Q{T} where {T}
-    @assert size(t) == size(val)
-    address = register_address!(t, length(blocks))
-    b = Tensor(val, hs(address))
-    push!(blocks, b)
+global_hilbert(t ::Type) ::Vector{H} = [H(objectid(t) * HASHPRIME + i, s) for (i, s) in enumerate(size(t))]
 
-    address
+@testset "compound hilbert spaces" begin
+    @test global_hilbert(Bool) == global_hilbert(Bool)
+    h = create_hilbert(Tuple{Bool, Bool}) ::CH
+    @test length(h) == 2
+    @test dim(h[1]) == dim(h[2]) == 2
 end
 
-@testset "variable registration" begin
-    v1 ::Q{Bool} = var(true)
-    v2 ::Q{Tuple{Bool, Bool}} = var(Set([(true, false), (false, true)]))
-    @test isa(v1, QSimpleVar{Bool})
-    @test isa(v2, QComposite{Tuple{Bool, Bool}})
+struct Val{T}
+    t ::Tensor
 end
 
-# or for any other composition
+# f : T -> Complex
+val(t ::Type{T}, f ::Function) where {T} =
+    Val{T}(Tensor([f(tt) for tt in iter(T)], global_hilbert(T))) ::Val{T}
+val(t ::Set{T}) where {T} = val(T, tt -> ((tt in t) ? (1 / sqrt(length(t))) : 0)) ::Val{T}
+val(t ::T)  where {T} = val(Set{T}([t])) ::Val{T}
 
-function view(qs ::Q...) ::Q{Tuple}
-    # TODO: check qs are disjoint
-    params = [typeof(q).parameters[1] for q in qs]
-    QComposite{Tuple{params...}}(qs)
-end
++(a ::Val{T}, b ::Val{T}) where {T} = Val{T}(a.t + b.t) ::Val{T}
+-(a ::Val{T}, b ::Val{T}) where {T} = (a + (-1) * b) ::Val{T}
+*(a ::Val{T}, b ::Number) where {T} = Val{T}(a.t * b) ::Val{T}
+*(b ::Number, a ::Val{T}) where {T} = Val{T}(a.t * b) ::Val{T}
+/(a ::Val{T}, b ::Number) where {T} = Val{T}(a.t / b) ::Val{T}
+normalize(v ::Val{T}) where {T} = v / pnorm(v.t)
 
-function view(qs ::Q{Tuple}) ::Tuple
-    (q.qs...,)
+@testset "values (aka rvalues)" begin
+    v1 = val(false)
+    v2 = val(Set([false, true]))
+    v3 = val(true)
+    @test typeof(v1) == typeof(v2) == typeof(v3) == Val{Bool}
+    @test normalize(v1 + v3).t == v2.t
+    @test convert(Number, conj(v1.t) * v2.t) == 1 / sqrt(2)
 end
 
 struct Map{T, V}
-    val ::Tensor
+    t ::Tensor
+end
+
+function map(p::Pair, f ::Function) # f: T -> Val{V}
+    T, V = p
+    tensor = sum([f(tt).t * conj(val(tt).t) for tt in iter(T)])
+    Map{T, V}(tensor)
+end
+
+function (m ::Map)(from :: Vector{H}, to ::Vector{H}) ::Tensor
+    t = morph(m.t, [dual(h) for h in global_hilbert(T)], [dual(h) for h in from])
+    t = morph(t, global_hilbert(V), to)
+end
+
+@testset "maps (aka lambdas)" begin
+    f = val(false)
+    t = val(true)
+    hadamard = map(Bool => Bool, x -> (val(true) + (x ? -1 : 1) * val(false)) / sqrt(2))
+    @test convert(Number, conj(t.t) * hadamard.t * f.t) == 1 / sqrt(2)
+    @test convert(Number, conj(f.t) * hadamard.t * f.t) == 1 / sqrt(2)
+end
+
+abstract type Q{T} end
+
+struct Var{T} <: Q{T}
+    hs ::CH
+end
+
+var(t ::T) where {T} = register!(val(t)) ::Q{T}
+var(t ::Set{T}) where {T} = register!(val(t)) ::Q{T}
+# f : t -> complex
+var(t ::Type{T}, f ::Function) where {T} = register!(val(t, f)) ::Q{T}
+
+blocks = Vector{Tensor}()
+registry = Dict{H, Int}()
+
+function register!(val::Val{T}) ::Q{T} where {T}
+    hs = create_hilbert(T)
+    b = morph(val.t, space(val.t), flatten(hs))
+    push!(blocks, b)
+    Var{T}(hs)
+end
+
+@testset "variable registration" begin
+    v1 = var(true)
+    v2 = var(Set([(true, false), (false, true)]))
+    @test isa(v1, Q{Bool})
+    @test isa(v2, Q{Tuple{Bool, Bool}})
+end
+
+struct View{T} <: Q{T}
     src ::Vector{H}
-    dst ::Vector{H}
+    map ::Tensor # bound to hilbert spaces
+    hs ::CH
 end
 
-function map(f ::Function) where {T, V} # f: T -> Q{V}
-    src = [H(s) for s in size(T)]
-    dst = [H(s) for s in size(V)]
+promote_rule(::Type{View{T}}, ::Type{Var{T}}) where {T} = View{T}
+
+convert(::Type{View}, v ::Var) =
+     View(flatten(v.hs), convert(Tensor, 1), v.hs) ::View
+
+function compose_impl(::Type{T}, vs ::Var...) ::Var{T} where {T}
+    @assert all([isempty(intersect(flatten(x.hs), flatten(y.hs)))
+        for (i, x) in enumerate(vs) for y in vs[i+1:end]])
+    Var{T}([v.hs for v in vs])
 end
 
+function compose(::Type{T}, qs ::Q...) ::Q{T} where {T}
+    compose_impl(T, promote(qs...)...)
+end
+
+function compose_impl(::Type{T}, vs ::View...) ::View{T} where {T}
+    @assert all([isempty(intersect(x.src, y.src))
+        for (i, x) in enumerate(vs) for y in vs[i+1:end]])
+    View{T}(vcat([v.src for v in vs]...), prod([v.map for v in vs]), [v.hs for v in vs])
+end
+
+function decompose(v ::Var{T}) ::Tuple where {T}
+    Tuple([Var{t}(h) for (h, t) in zip(v.hs, decompose(T))])
+end
+
+function decompose(v ::View{T}) ::Tuple{View} where {T}
+    Tuple([all(x -> x in v.src, flatten(h)) ?
+            Var{t}(h) :
+            View{t}(filter(x -> !(x in flatten(h)), v.src), v.map, h)
+        for (h, t) in zip(v.hs, decompose(T))])
+end
+
+function reinterpret(v ::Q{T}, m ::Map{T, V}) ::View{V} where {T, V}
+    v = convert(View, v)
+    dst = create_hilbert(V)
+    View{T}(v.src, m.t(flatten(v.hs), flatten(dst)) * v.map, dst)
+end
+
+@testset "three type of view-transforms" begin
+    v1 = var(false)
+    v2 = var(false)
+    v1v2 = compose(Tuple{Bool, Bool}, v1, v2)
+    @test (v1, v2) == decompose(v1v2)
+    # TODO test reinterpret
+end
+
+function entangle!(hs ::Vector{H})
+    source = registry[hs[1]]
+    for h in hs[1:end]
+        if registry[h] != source
+            block[source] = block[source] * block[registry[h]]
+            registry[h] = source
+        end
+    end
+end
+
+function apply(q ::Var{T}, m ::Map{T, T}) where {T}
+    site = entangle!(flatten(q.hs))
+    blocks[site] = m.t(flatten(q.hs), flatten(q.hs)) * blocks[site]
+end
+
+function apply(q ::View{T}, m ::Map{T, T}) where {T}
+    # TODO
+end
+
+## I left here, then move
 
 # map: Function{T, V} -> Map{T, V} (tool)
 # map: Function{T, VirtualMixedState{V}} -> Map{T, V}
 
 
-# TODO mapping
-#struct QMapped{T} <: Q{T}
-#    ref ::Q
-#    map ::Map{T}
-#end
-#function view(q ::Q{T}, map ::QMap{T, V}) ::Q{V} where {T, V}
-#    hv = H(size(V))
-#    Q(map(from=q.hs, to=hv) * q.premap, hv)
-#end
-
 #=
-
-
-struct QVal{T} <: PureState{T}
-    vec ::Tensor                           # must match dimension
-    
-end
-
 
 struct QOp{T} <: QMap{T, T}, Evolution{T}, Operator{T}
 end

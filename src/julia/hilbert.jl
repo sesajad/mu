@@ -1,4 +1,4 @@
-import Base:*, ==, +, -, /, conj, convert
+import Base:*, ==, +, -, /, conj, convert, size
 
 import LinearAlgebra:I
 
@@ -18,7 +18,7 @@ struct H
     dim ::Int
     duality ::Int
 end
-
+H(uid ::UInt, dim ::Int) = H(uid, dim, 0)
 H(dim ::Int) ::H = H(rand(UInt), dim, 0)
 dim(h ::H) ::Int = h.dim
 
@@ -30,10 +30,11 @@ dual(h ::H) ::H = H(h.uid, h.dim, h.duality + 1)
 
 idual(h ::H) ::H = H(h.uid, h.dim, h.duality - 1)
 
-# conj(h ::H) ::H = (h.uid, h.dim, 1 - h.duality)
+conj(h ::H) ::H = H(h.uid, h.dim, 1 - h.duality)
 # assumming h.duality is in {0, 1}
 
-hash(h ::H) ::UInt = h.uid + 100000007 * h.duality
+HASHPRIME = 100000007
+hash(h ::H) ::UInt = h.uid + HASHPRIME * h.duality
 
 
 function ==(a ::H, b ::H)
@@ -48,6 +49,8 @@ end
         @test !(h != h)
         @test h == h
         @test h == dual(idual(h))
+        @test conj(h) == dual(h)
+        @test conj(dual(h)) == h
     end
 
 # ===================
@@ -69,6 +72,7 @@ end
 space(t ::Tensor) ::Vector{H} = t.dim_index
 
 order(t ::Tensor) ::Int = length(t.dim_index)
+size(t ::Tensor) ::Tuple = size(t.value)
 
 @testset "Tensor definition" begin
         h = H(2)
@@ -110,9 +114,9 @@ end
 dual(t ::Tensor) ::Tensor = Tensor(conj(t.value), [dual(h) for h in t.dim_index])
 idual(t ::Tensor) ::Tensor = Tensor(conj(t.value), [idual(h) for h in t.dim_index])
 
-#function conj(t ::Tensor) ::Tensor
-#    Tensor(conj(t.value), [conj(h) for h in t.dim_index])
-#end
+function conj(t ::Tensor) ::Tensor
+    Tensor(conj(t.value), [conj(h) for h in t.dim_index])
+end
 
 @testset "Tensor basic operations" begin
         h = H(2)
@@ -123,8 +127,8 @@ idual(t ::Tensor) ::Tensor = Tensor(conj(t.value), [idual(h) for h in t.dim_inde
 
 *(a ::Tensor, b ::Number) ::Tensor = Tensor(a.value * b, a.dim_sites, a.dim_index)
 *(b ::Number, a ::Tensor) ::Tensor = Tensor(a.value * b, a.dim_sites, a.dim_index)
-/(a ::Tensor, b ::Number) ::Tensor = Tensor(a.value * b, a.dim_sites, a.dim_index)
-
+/(a ::Tensor, b ::Number) ::Tensor = Tensor(a.value / b, a.dim_sites, a.dim_index)
+==(a ::Tensor, b ::Tensor) ::Bool = pnorm(a - b, 1) == 0
 pnorm(t ::Tensor, p ::Int=2) ::Number = sum(vec(t.value) .^ p) ^ (1 / p)
 
 convert(::Type{Number}, t ::Tensor) ::Number = t.value[]
@@ -134,13 +138,15 @@ convert(::Type{Number}, t ::Tensor) ::Number = t.value[]
         k0 = Tensor([1, 0], [h])
         k1 = Tensor([0, 1], [h])
         @test pnorm(dual(k0) * k0, 1) == 1
+        @test convert(Number, dual(k0) * k0) == 1
         @test pnorm(dual(k0) * k1, 1) == 0
         @test pnorm(k0 - k0) == 0
+        @test k0 == k1
     end
 
 function morph_tensor(from ::Vector{H}, to ::Vector{H}) ::Tensor
     hs = [[dual(h) for h in from]..., to...]
-    # assert that prod-dim of from == prod-dim of to
+    @assert prod(dim, from) == prod(dim, to)
     d = prod([dim(h) for h in from])
     idn = reshape(Matrix(I, d, d), Tuple(dim(h) for h in hs))
     Tensor(idn, hs)
@@ -164,10 +170,10 @@ end
         a2 = Tensor([1, 1], [h2b])
 
         t2p = morph_tensor([h1], [h2a, h2b]) * t
-        @test pnorm((a1 * t2p) - a2) == 0
+        @test (a1 * t2p) == a2
 
         t2m = morph(t, [h1], [h2a, h2b])
-        @test pnorm((a1 * t2m) - a2) == 0
+        @test (a1 * t2m) == a2
     end
 
 # a more general and simple way to implement tr
