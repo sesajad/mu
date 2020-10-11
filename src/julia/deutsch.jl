@@ -34,20 +34,19 @@
 # var: T -> VirtualMixedState{T} (tool)
 # var: Set{T} -> VirtualMixedState{T} (tool)
 # var: Function{T} -> VirtualMixedState{T}
-# map: Function{T, V} -> Map{T, V} (tool)
 # map: Function{T, VirtualMixedState{V}} -> Map{T, V}
 
 # functions
-# let: VirtualMixedState{T} x Map{T, V} -> VirtualMixedState{V}
-# view: VirtualMixedState{NTuple{N, T}} -> NTuple{VirtualMixedState{T}}
-# view: NTuple{VirtualMixedState{T}} -> VirtualMixedState{NTuple{N, T}}
+# reinterpret: VirtualMixedState{T} x Map{T, V} -> VirtualMixedState{V}
+# decompose: VirtualMixedState{NTuple{N, T}} -> NTuple{VirtualMixedState{T}}
+# compose: NTuple{VirtualMixedState{T}} -> VirtualMixedState{NTuple{N, T}}
 
 # Modifiers of global state
 
 # _register!: MixedState{T} -> VirtualMixedState{T}
 # _entangle!: list of blocks to entangle
 
-# erase!: VirtualMixedState{V} -> Void
+# _unregister!: VirtualMixedState{V} -> Void
 # apply!: VirtualMixedState{T} x Channel{T} -> Void
 # move!: VirtualMixedState{T} x Map{T, V} -> VirtualMixedState{V}
 # measure!: VirtualMixedState{T} x Measure{T, F} -> Dist{F}
@@ -88,6 +87,10 @@ end
 struct Val{T}
     t ::Tensor
 end
+
+promote_rule(::Type{T}, ::Type{Val{T}}) where {T} = Val{T}
+promote_rule(::Set{T}, ::Type{Val{T}}) where {T} = Val{T}
+# TODO promote_rule and convert
 
 # f : T -> Complex
 val(t ::Type{T}, f ::Function) where {T} =
@@ -233,10 +236,10 @@ function apply(q ::View{T}, m ::Map{T, T}) where {T}
     # TODO
 end
 
-## I left here, then move
-
-# map: Function{T, V} -> Map{T, V} (tool)
-# map: Function{T, VirtualMixedState{V}} -> Map{T, V}
+# TODO think about up-dimension and low-dimension maps
+# then move
+# then measure
+# then then _unregister
 
 
 #=
