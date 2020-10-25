@@ -52,16 +52,17 @@ A simulation/experimental tool must be at the same abstraction level that scient
 It's not necessary to point that using the scientific terms, operators, and functions are the baseline to do to make it scientist-friendly.
 
 \item a Swiss army knife, not a giant supertool
-% TODO
 
-\textbf{NOT COMPLETED}
-A minimal and complete set of tools,
-
-Fully understandable for developers, engineers and scientists.
+To cover all of the wide-range applications of a language describing and simulating QC/QI processes, it doesn't need to be giant set of tool. As it's been seen in the computer science, general-purpose programming languages are not that much big, in terms of core functionalities. A limited set of tools tend to be more memorizable and more enjoyable for developers. 
 
 \item Layered and extensible patch
 
-\item futuristic
+In continue to the previous feature, software architecture can now helps us, designing easily extensible tools. The design pattern that it's good to be followed is layered. The reason behind that is that in the pure science we saw, QC, is represented on a circuit that is made over the quantum postulates, over a linear algebra.
+
+\item Futuristic
+
+Maybe it's too early to judge about the future of quantum computing tools, but it doesn't mean that we shouldn't step forward to make it.
+
 \end{itemize}
 
 \section{Design}
@@ -78,9 +79,23 @@ in term of types, functions and a brief structure (which is technically implment
 
 
 \textbf{Types: }
+
 \begin{itemize}
     \item \co|H| is the type that represents a single Hilbert space (tensor-product spaces are not counted in).
 	\item \co|Vector| which represents a vector in a set/list of Hilbert spaces.
+\end{itemize}
+
+\textbf{Constructors: }
+
+\begin{itemize}
+	\item \co|H(dim: Int)| \(\to\) \co|H|: For constructing \co|H| from its dimension.
+	\item \co|Vector(v: List[Complex], H)| \(\to\) \co|Vector|: This function constructs a vector from a list of coefficents each corresponds to each basis of \co|H|, it's like $\sum_i v_i \ket{i}$
+\end{itemize}
+
+\textbf{Conversions: }
+
+\begin{itemize}
+	\item \co|Vector| \(\leftrightarrow\) \co|Complex|: vectors \co|v| with \co|space(v)| = \co|[]|, are isomorphic to complex numbers.
 \end{itemize}
 
 \textbf{Functions: }
@@ -107,7 +122,9 @@ in term of types, functions and a brief structure (which is technically implment
 	\item \co|pnorm(Vector, p: Real)| \(\to\) \co|Real|:
 	    This function returns $\ell^p$-norm of the vector.
 	\item \co|tr(Vector, List[H])| \(\to\) \co|Vector|:
-	    Trace of the vector over a list of Hilbert spaces.
+	    %Trace of the vector over a list of Hilbert spaces.
+    \item \co|morph(Vector, from: List[H], to: List[H])| \(\to\) \co|Vector|:
+        Changes space of the vector. Hilbert spaces in \co|from| are replaced with \co|to|, with simplest isomorphism between their basis. (\co|from| and \co|to| must have the same dimension) 
 \end{itemize}
 
 \textbf{Operators: }
@@ -116,25 +133,13 @@ in term of types, functions and a brief structure (which is technically implment
     \item \co|Vector * Vector| \(\to\) \co|Vector|:
 	    Tensor contraction similar to dirac notation. It means that for \co|a, b: Vector|,
 	    If \co|space(a)| = \co|[dual(H)]| and \co|space(b)| = \co|[H]| then \co|space(a * b)| = \co|[]| and \co|space(b * a)| = \co|[dual(H), H]|. And obviously if \co|space(a)| = \co|[|\(\mathcal{H}_1\)\co|]|  and \co|space(b)| = \co|[|\(\mathcal{H}_2\)\co|]|
-	    then \co|space(a * b)| = \co|space(a * b)| = \co|[|\(\mathcal{H}_1\)\co|, |\(\mathcal{H}_1\)\co|]|.
+	    then \co|space(a * b)| = \co|space(a * b)| = \co|[|\(\mathcal{H}_1\)\co|, |\(\mathcal{H}_2\)\co|]|.
+   \item \co|Vector + Vector| \(\to\) \co|Vector|: addition of two vector.
 	\item \co|Vector - Vector| \(\to\) \co|Vector|: subtraction of two vector.
     \item \co|Vector * Complex| \(\to\) \co|Vector|
     \item \co|Complex * Vector| \(\to\) \co|Vector|
     \item \co|Vector / Complex| \(\to\) \co|Vector|: scalar multiplication and division.
 
-\end{itemize}
-
-\textbf{Conversions: }
-
-\begin{itemize}
-	\item \co|Vector| \(\leftrightarrow\) \co|Complex|: vectors \co|v| with \co|space(v)| = \co|[]|, are isomorphic to complex numbers.
-\end{itemize}
-
-\textbf{Constructors: }
-
-\begin{itemize}
-	\item \co|H(dim: Int)| \(\to\) \co|H|: For constructing \co|H| from its dimension.
-	\item \co|Vector(v: List[Complex], H)| \(\to\) \co|Vector|: This function constructs a vector from a list of coefficents each corresponds to each basis of \co|H|, it's like $\sum_i v_i \ket{i}$
 \end{itemize}
 
 \textbf{Example}
@@ -150,11 +155,29 @@ dual(v1) * v2) ; same as <v1|v2>
 v1 * dual(v2)  ; same as |v1> <v2|
 \end{lstlisting}
 
-\subsection{Core}
+\subsection{Typed Quantum Computing}
 
-By adding a special generic type called $Q$, to any modern programming language we can make it possible.
+We often use qubits for the purpose of quantum computation, while the bit itself is not used in classical computation. It's mainly used in hardware description languages and not programming languages and algorithms.
 
-\co{Q<T>} (C/C++/Java) \co{Q[T]} (Scala) \co|Q{T}| (Julia) means a quantum space in $\mathcal{H}(T)$ calling Hilbert space with $T$ as basis. But we know that having multiple \co{Q}-typed values, makes our Hilbert space much larger that is kronoker product (tensor product) of spaces/vectors.
+Types, such as \co{Int}, \co{Int8}, \co{Bool} are the core things that we use to think about algorithms. On the other hand, in quantum computing we are also thinking in terms of groups such and fields (for the basis) which are apperently similar.
+
+The reason behind working with types is pretty obvious, but the main challenge is to define proper types and our map current tools, qubits, sites and gates well in terms of types. 
+
+\subsubsection{Types and Variables}
+
+In a pretty simple quantum algorithm, we may use multiple qubits, means that we have a vector (called the system state) that belongs to a \(\mathcal{H}^n\). then we say we're applying a gate on $i$-th qubit, we are refering one of those Hilbert spaces, then defining a linear operation on it and applying it to the system state.
+
+Therefore, qubit is somehow represented via a Hilbert space, while the system state is globally specified.
+
+We define a parameteric type \co|Q|, 
+\co{Q<T>} (C/C++/Java) \co{Q[T]} (Scala) \co|Q{T}| (Julia), each instance of it, is basically a Hilbert space with the basis that are all possible values for type \co|T|.
+
+Our system state is also something that belongs to all of the defined \co|Q| variables. 
+
+When we're defining a new \co|Q| which is like adding a new qubit/qudit/quantum subsystem to our system, we must set its initial value, therefore ve define type \co|Val{T}|. Each value of type \co|Val{T}| is a vector with basis that are \co|T| values. Therefore we can create a \co|Q{T}| with initial value \co|Val{T}|, then as a result the system state will be now the tensor product of the old system state and the initial value, and \co|Q{T}| will be referring to the added Hilbert space. 
+  
+\subsubsection{Composite Types}
+\subsubsection{View Types}
 
 \subsubsection{\co|Q|-type}
 While physicists/mathematicians think about groups, maps and measures, within different levels of abstraction, and computer scientists think about primitives, structs, datastructures and more, the major portion of quantum computing tools are offering "Register Arrays" as the main tool for computation, which is disappointing for anyone other digital systems experts.
@@ -194,11 +217,11 @@ As a beloved target, codes in the operators that are enslaved within lambda expr
 \begin{lstlisting}
 
 def BV(func, n)
-    inputs = Q((0, ) * n)
-    result = Q(false)
+    inputs = [var(0, type=bool) for _ in range(n)]
+    result = var(false)
     
     for i in inputs:
-        i = i.apply(u(lambda x: ket(0) + (-1) ** x * ket(1)))
+        i.apply!(u(lambda x: ket(0) + (-1) ** x * ket(1)))
     
     result = t(result, inputs).apply(u(lambda (x, y) : y + func(x))
     

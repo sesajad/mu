@@ -18,44 +18,46 @@
 
 # abstract type Dist{T} end 	# T -> Real
 
-# single-var functions
+# polymorphism casts
+
 # cast: T -> PureState{T}
 # cast: Set{T} -> PureState{T}
 # cast: PureState{T} -> MixedState{T}
 # cast: Evolution{T} -> Channel{T}
 
-# composition functions
-
-# storage, an mutable interface
-# abstract type VirtualPureState{T} end
-# abstract type VirtualMixedState{T} end
+# storage model
+# abstract type Var{T} end
 
 # constructors
-# var: T -> VirtualMixedState{T} (tool)
-# var: Set{T} -> VirtualMixedState{T} (tool)
-# var: Function{T} -> VirtualMixedState{T}
-# map: Function{T, VirtualMixedState{V}} -> Map{T, V}
+# val: T -> Val{T} (tool)
+# val: Set{T} -> Val{T} (tool)
+# val: Function{T} -> Val{T}
+# map: Function{T, PureState{V}} -> Map{T, V}
+# var: like var
 
 # functions
-# reinterpret: VirtualMixedState{T} x Map{T, V} -> VirtualMixedState{V}
-# decompose: VirtualMixedState{NTuple{N, T}} -> NTuple{VirtualMixedState{T}}
-# compose: NTuple{VirtualMixedState{T}} -> VirtualMixedState{NTuple{N, T}}
+# decompose: ?{CompositeType} -> ?...
+# compose: NTuple{CompositeType, ?...} -> ?{Composite}
+# cast: ?{T} -> ?{U}
+
+# views
+# reinterpret: Var{T} x Map{T, V} -> Var{V}
 
 # Modifiers of global state
 
 # _register!: MixedState{T} -> VirtualMixedState{T}
 # _entangle!: list of blocks to entangle
 
-# _unregister!: VirtualMixedState{V} -> Void
-# apply!: VirtualMixedState{T} x Channel{T} -> Void
-# move!: VirtualMixedState{T} x Map{T, V} -> VirtualMixedState{V}
-# measure!: VirtualMixedState{T} x Measure{T, F} -> Dist{F}
+# apply!: Var{T} x Channel{T} -> Void
+# move!: Var{T} x Map{T, V} -> Var{V}
+# measure!: Var{T} x Measure{T, F} -> Dist{F}
+# _unregister!: Var{V} -> Void
 
  
 # implementation
 
 
-include("hilbert.jl")
+include("spaces/finite.jl")
 include("etypes.jl")
 
 # ===================
@@ -67,6 +69,8 @@ CH = Union{Vector, H} # a tree made of Hs
 flatten(h ::H) ::Vector{H} = [h]
 flatten(ch ::Vector) ::Vector{H} = vcat([flatten(f) for f in ch]...)
 
+conj(ch ::Vector) = [conj(h) for h in ch]
+
 function create_hilbert(t ::Type) ::CH
     if decompose(t) == t
         H(size(t)[1])
@@ -75,7 +79,14 @@ function create_hilbert(t ::Type) ::CH
     end
 end
 
-global_hilbert(t ::Type) ::Vector{H} = [H(objectid(t) * HASHPRIME + i, s) for (i, s) in enumerate(size(t))]
+function global_hilbert(t ::Type, hash ::UInt = objectid(t)) ::CH
+    if decompose(t) == t
+        H(HASHPRIME * hash, size(t)[1])
+    else
+        [global_hilbert(x, HASHPRIME * hash + i) for (i, x) in enumerate(decompose(t))]
+    end
+end
+
 
 @testset "compound hilbert spaces" begin
     @test global_hilbert(Bool) == global_hilbert(Bool)
@@ -84,49 +95,131 @@ global_hilbert(t ::Type) ::Vector{H} = [H(objectid(t) * HASHPRIME + i, s) for (i
     @test dim(h[1]) == dim(h[2]) == 2
 end
 
+# ===================
+# R-Values (val and map)
+# ===================
+
 struct Val{T}
-    t ::Tensor
+    t ::DenseVector
 end
 
-promote_rule(::Type{T}, ::Type{Val{T}}) where {T} = Val{T}
-promote_rule(::Set{T}, ::Type{Val{T}}) where {T} = Val{T}
-# TODO promote_rule and convert
 
-# f : T -> Complex
-val(t ::Type{T}, f ::Function) where {T} =
-    Val{T}(Tensor([f(tt) for tt in iter(T)], global_hilbert(T))) ::Val{T}
+# defintions
+val(t ::Type{T}, f ::Function) where {T} = # f : T -> Complex
+    Val{T}(DenseVector([f(tt) for tt in iter(T)], flatten(global_hilbert(T)))) ::Val{T}
+# WARNING fock and schrodingers are unsupported
+
+# hard definitions
 val(t ::Set{T}) where {T} = val(T, tt -> ((tt in t) ? (1 / sqrt(length(t))) : 0)) ::Val{T}
 val(t ::T)  where {T} = val(Set{T}([t])) ::Val{T}
 
+convert(::Type{Val{T}}, t ::T) where {T} = val(t) ::Val{T}
+convert(::Type{Val{T}}, t ::Set{T}) where {T} = val(t) ::Val{T}
+
+#actions
+function cast(::Type{V}, v ::Val{T}) ::Val{V} where {T, V}
+    Val{V}(morph(v.t, flatten(global_hilbert(T)), flatten(global_hilbert(V))))
+end
+
+function compose(::Type{T}, vs ::Val...) ::Val{T} where {T}
+    froms = [flatten(global_hilbert(t)) for t in decompose(T)]
+    tos = [flatten(h) for h in global_hilbert(T)]
+    Val{T}(prod([morph(v.t, f, t) for (v, f, t) in zip(vs, froms, tos)]))
+end
+
+decompose(v ::Val{T}) where {T} = error("mixed are not implemented")
+
+# hard actions
 +(a ::Val{T}, b ::Val{T}) where {T} = Val{T}(a.t + b.t) ::Val{T}
 -(a ::Val{T}, b ::Val{T}) where {T} = (a + (-1) * b) ::Val{T}
 *(a ::Val{T}, b ::Number) where {T} = Val{T}(a.t * b) ::Val{T}
 *(b ::Number, a ::Val{T}) where {T} = Val{T}(a.t * b) ::Val{T}
 /(a ::Val{T}, b ::Number) where {T} = Val{T}(a.t / b) ::Val{T}
-normalize(v ::Val{T}) where {T} = v / pnorm(v.t)
+normalize(v ::Val{T}) where {T} = (v / pnorm(v.t)) :: Val{T}
 
 @testset "values (aka rvalues)" begin
+    v0 = val(Bool, x -> 1/sqrt(2))
     v1 = val(false)
     v2 = val(Set([false, true]))
     v3 = val(true)
     @test typeof(v1) == typeof(v2) == typeof(v3) == Val{Bool}
+    @test v0.t == v2.t
     @test normalize(v1 + v3).t == v2.t
     @test convert(Number, conj(v1.t) * v2.t) == 1 / sqrt(2)
+    v4 = val((true, false))
+    @test compose(Tuple{Bool, Bool}, v3, v1).t == v4.t
 end
 
 struct Map{T, V}
-    t ::Tensor
+    t ::DenseVector
 end
 
-function map(p::Pair, f ::Function) # f: T -> Val{V}
+function (m ::Map)(from :: Vector{H}, to ::Vector{H}) ::DenseVector
+    t = morph(m.t, flatten(conj(global_hilbert(T))), conj(frm))
+    t = morph(t, flatten(global_hilbert(V)), to)
+end
+
+# definitions
+
+# TODO some more basic things
+
+#identity
+#equals
+#successor
+#fourier
+
+# hard definitions
+function map(p ::Pair, f ::Function) # f: T -> convertible to Val{V}
     T, V = p
-    tensor = sum([f(tt).t * conj(val(tt).t) for tt in iter(T)])
-    Map{T, V}(tensor)
+    DenseVector = sum([convert(Val{T}, f(tt)).t * conj(val(tt).t) for tt in iter(T)])
+    Map{T, V}(DenseVector)
+end
+# WARNING fock and schrodingers are unsupported
+
+# actions
+function inv(m ::Map{T, V}) ::Map{V, T} where {T, V}
+    Map{V, T}(conj(m.t))
 end
 
-function (m ::Map)(from :: Vector{H}, to ::Vector{H}) ::Tensor
-    t = morph(m.t, [dual(h) for h in global_hilbert(T)], [dual(h) for h in from])
-    t = morph(t, global_hilbert(V), to)
+function cast(p ::Pair, m ::Map) ::Map
+    # TODO reinterpret cast
+end
+
+function compose(p ::Pair, maps ::Map...)
+    T, V = p
+    tfroms = [conj(flatten(global_hilbert(t))) for t in decompose(T)]
+    ttos = [conj(flatten(h)) for h in global_hilbert(T)]
+    maps = [morph(v.t, f, t) for (v, f, t) in zip(maps, tfroms, ttos)]
+
+    vfroms = [flatten(global_hilbert(t)) for t in decompose(T)]
+    vtos = [flatten(h) for h in global_hilbert(T)]
+    maps = [morph(v.t, f, t) for (v, f, t) in zip(maps, vfroms, vtos)]
+
+    Map{T, V}(prod(maps))
+end
+
+
+decompose(m ::Map) = error("channels are not implemented")
+
+function *(a ::Map{T, V}, b ::Map{V, U}) ::Map{T, U} where {T, V, U}
+    Map{T, U}(a.t * b.t)
+end
+
+# hard actions
+function switch(expr ::Map{T, S}, pairs... ::Pair{S, Map{U, V}}) ::Map{Tuple{T, V}, Tuple{T, U}} where {T, S, U, V}
+    hta, hv = global_hilbert(Tuple{T, V})
+    htb, hu = global_hilbert(Tuple{T, U})
+    ht = global_hilbert(T)
+    hs = global_hilbert(S)
+
+    tt = map(T => Tuple{T, T}, x -> (x,x))(flatten(hta), flatten([htb, ht]))
+    tt *= cond(ht, hs)
+    tt *= sum([conj(val(v).t) * c(hv, hu) for (v, c) in pairs])
+    Map{Tuple{T, V}, Tuple{T, U}}(tt)
+end
+
+function ifte(cond ::Map{T, Bool}, thenm ::Map{U, V}, elsem ::Map{U, V}) ::Map{Tuple{T, V}, Tuple{T, U}} where {T, U, V}
+    switch(cond, true => thenm, false => elsem)
 end
 
 @testset "maps (aka lambdas)" begin
@@ -136,6 +229,10 @@ end
     @test convert(Number, conj(t.t) * hadamard.t * f.t) == 1 / sqrt(2)
     @test convert(Number, conj(f.t) * hadamard.t * f.t) == 1 / sqrt(2)
 end
+
+# =====================
+# Variables and Storage
+# =====================
 
 abstract type Q{T} end
 
@@ -148,7 +245,7 @@ var(t ::Set{T}) where {T} = register!(val(t)) ::Q{T}
 # f : t -> complex
 var(t ::Type{T}, f ::Function) where {T} = register!(val(t, f)) ::Q{T}
 
-blocks = Vector{Tensor}()
+blocks = Vector{DenseVector}()
 registry = Dict{H, Int}()
 
 function register!(val::Val{T}) ::Q{T} where {T}
@@ -165,16 +262,20 @@ end
     @test isa(v2, Q{Tuple{Bool, Bool}})
 end
 
+# ===================
+# Views, like references
+# ===================
+
 struct View{T} <: Q{T}
     src ::Vector{H}
-    map ::Tensor # bound to hilbert spaces
+    map ::DenseVector # bound to hilbert spaces
     hs ::CH
 end
 
 promote_rule(::Type{View{T}}, ::Type{Var{T}}) where {T} = View{T}
 
 convert(::Type{View}, v ::Var) =
-     View(flatten(v.hs), convert(Tensor, 1), v.hs) ::View
+     View(flatten(v.hs), convert(DenseVector, 1), v.hs) ::View
 
 function compose_impl(::Type{T}, vs ::Var...) ::Var{T} where {T}
     @assert all([isempty(intersect(flatten(x.hs), flatten(y.hs)))
@@ -209,6 +310,10 @@ function reinterpret(v ::Q{T}, m ::Map{T, V}) ::View{V} where {T, V}
     View{T}(v.src, m.t(flatten(v.hs), flatten(dst)) * v.map, dst)
 end
 
+function cast(::Type{T}, v ::Q{V}) ::Q{T} where {T, V}
+    # TODO reinterpret cast
+end
+
 @testset "three type of view-transforms" begin
     v1 = var(false)
     v2 = var(false)
@@ -227,144 +332,68 @@ function entangle!(hs ::Vector{H})
     end
 end
 
-function apply(q ::Var{T}, m ::Map{T, T}) where {T}
-    site = entangle!(flatten(q.hs))
-    blocks[site] = m.t(flatten(q.hs), flatten(q.hs)) * blocks[site]
+function apply!(v ::Var{T}, m ::Map{T, T}) where {T}
+    site = entangle!(flatten(v.hs))
+    blocks[site] = m.t(flatten(v.hs), flatten(v.hs)) * blocks[site]
 end
 
-function apply(q ::View{T}, m ::Map{T, T}) where {T}
-    # TODO
+function apply!(v ::View{T}, m ::Map{T, T}) where {T}
+    site = entangle!(v.src)
+    blocks[site] = inv(v.map) * m.t(flatten(v.hs), flatten(v.hs)) * v.map * blocks[site]
+    @assert pnorm(blocks[site]) == 1 # upto an small error?
 end
 
-# TODO think about up-dimension and low-dimension maps
-# then move
-# then measure
-# then then _unregister
+# TODO
+# moving view is unallowed (?)
+# so what about immutable viewing?
+function move!(v ::Var{T}, m ::Map{T, V}) ::Var{T} where {T, V}
+    site = entangle!(flatten(v.hs))
+    src = flatten(v.hs)
+    dst = create_hilbert(V)
+    for h in src
+        delete!(registry, h)
+    end
+    for h in flatten(dst)
+        registry[h] = site
+    end
+    blocks[site] = m.t(src, flatten(dst)) * blocks[site]
+    @assert pnorm(blocks[site]) == 1 # upto an small error?
+    Var{V}(dst)
+end
 
+struct Op{T} # positive operator on T
+    t ::DenseVector
+end
+
+struct Measure{T, F}
+    d ::Dict{Op{T}, F}
+end
+
+op(v ::T) where {T} = op(convert(Val{T}, v))
+op(v ::Set{T}) where {T} = op(convert(Val{T}, v))
+op(v ::Val{T}) where{T} = Op{T}(v.t * conj(v.t))
+op(v ::Map{Val{T} => Real}) where {T}
+# T, Val{T} -> Op{T}
+# Set{T} -> Op{T}
+# (T1, T2 -> Complex) -> Op?
+
+# default_measurement(::Type{T}) = # default basis measurement
+
+function measure!(v ::Q{T}, m ::Measure{T, F}) :: F where {T, F}
+end
+
+function observe!(v ::Q{T}) ::T
+    site =
+end
+# WARNING fock and schrodingers are unsupported
+
+function _unregister!(v ::Var{T}) where {T}
+    # disentangle (measure)
+    # remove block site
+    # remove from registry
+end
 
 #=
-
-struct QOp{T} <: QMap{T, T}, Evolution{T}, Operator{T}
-end
-
-struct QMeasure{T, F}
-    set ::Vector{Tuple{Operator, F}}
-end
-
-type Q{T} <: VirtualPureState{T} end
-mutable struct VariableAddress{T} <: Q{T]
-    block ::Int8
-    h ::H
-end
-struct CrossAddress{T} <: Q{T}
-    refs ::Vector{Q}
-end
-
-struct ProjectAddress{T} <: Q{T}
-    ref ::Q
-    dim ::Set{Int8}
-end
-
-struct RotateAddress{T} <: Q{T}
-    ref ::Q
-    matrix ::Gate
-end
-
-blocks = []
-registry = []
-
-function entangle!(t ::Set{VariableReferences}) where {T, n}
-    blocks = sort([tt.block for tt in t]) 
-    # for improving performance sort blocks descending  
-    a = blocks[end] # smallest number
-    for b in blocks[1:end - 1] # from largest to smallest
-        if (typeof(block[a]) == PureState_Vector && 
-            typeof(block[b]) == PureState_Vector)
-            for r in registry
-                if (r.block == b)
-                    r.block = a
-                    r.dim += dim(block[a].vec)
-                elseif (r.block > b)
-                    r.block -= 1
-                end
-            end
-            block[a] = block[a] ⊗ b_block
-            deleteat!(block, b)
-        else
-            throw("unimplemented type for entanglement")
-        end
-    end
-end
-
-function view(qs ::Varargs{Q, n}) ::Q{Tuple}
-    CrossAddress(refs = [...qs])
-end
-
-function view(q ::Q{T}, map ::QMap{T, V}) ::Q{V} where {T, V}
-    RotateAddress(ref=q, matrix = map)
-end
-
-function view(qs ::Q{Tuple}) ::NTuple{Q, n} where {n}
-    start = 1
-    res = []
-    for t in typeof(qs).parameters[1].parameters:
-        res.append(ProjectAddress(ref=qs, range(start, length=length(dim(t)))))
-        s += length(dim(t)) 
-    (...res)
-end
-
-#function u():: 
-
-
-function unregister!(q ::VarAddress{T}) where {T}
-    # reassign the block  (by a measurement-like tracing)
-    #=
-    block[q.block] = 
-    if (block[q.block] is empty) 
-        deleteat!(block, q.block)
-        then update registry
-    else
-        update registry
-    =#
-end
-
-function apply(q ::Vector{Q}, g::Local)
-    t = []
-    dim = 1
-    for s in q 
-        case s ::Rotate => apply(q.ref, q.matrix)
-        case s ::Dim => 
-            g = Local([1:d..., q.dims, :end], g)
-            t.append(q.ref)
-        case s ::CrossAddress => 
-            t.appendAll(q.refs)
-        case s ::Variable => nothing
-        dim += length(dim(s))
-    if (t all variable)
-        cast t to Vector{Variable}
-    apply(t, g)
-    for s in q
-        case s ::Rotate => apply(q.ref, q.matrix^-1)
-end
-
-function apply!(q ::Vector{Variable}, g::{Gate or Local})
-    entangle!(folan)
-    block[q.block] = Local(g, vec(q.dim)) * block[q.block]
-end
-
-
-function move!(q ::VariableAddress{T}, map ::QMap{T, V}) ::VariableAddress{V} where {T, V}
-    apply!(q, map)
-    v = VariableAddress{V}(q.block, q.dim)
-    q.block = -1
-    q.dim = -1
-    v
-end
-
-function measure!(q ::Q{T}, Measure{T, F}) ::F
-     bra * 
-end
-
 Q{Bool} qubit = q(folan)
 Q{Bool} view(q, u(unitary))
 location, momentum = q(folan, views=(u(location), u(momentum)))
