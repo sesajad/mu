@@ -1,3 +1,9 @@
+module Typed
+
+import Base:conj
+using Test
+
+using AbstractSpace
 
 # ===================
 # Hilbert Space Utilities for Typed Programming
@@ -5,10 +11,14 @@
 
 CH = Union{Vector, AbsHilbert} # a tree made of Hs
 
-flatten(h ::AbsHilbert) ::Vector{AbsHilbert} = [h]
-flatten(ch ::Vector) ::Vector{AbsHilbert} = vcat([flatten(f) for f in ch]...)
+flatten(h ::T) where {T <: AbsHilbert} = T[h] ::Vector{T}
+flatten(ch ::Vector) = vcat([flatten(f) for f in ch]...)
 
 conj(ch ::Vector) = [conj(h) for h in ch]
+
+
+using FiniteSpace
+using Types
 
 function create_hilbert(t ::Type) ::CH
     if decompose(t) == t
@@ -26,11 +36,14 @@ function global_hilbert(t ::Type, hash ::UInt = objectid(t)) ::CH
     end
 end
 
-
-@testset "compound hilbert spaces" begin
+@testset "Typed:: compound hilbert spaces" begin
     @test global_hilbert(Bool) == global_hilbert(Bool)
     h = create_hilbert(Tuple{Bool, Bool}) ::CH
     @test length(h) == 2
     @test dim(h[1]) == dim(h[2]) == 2
 end
 
+export Types
+export CH, flatten, conj, create_hilbert, global_hilbert
+
+end

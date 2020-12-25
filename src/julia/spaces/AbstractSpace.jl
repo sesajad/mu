@@ -1,4 +1,6 @@
-import Base:*, ==, +, -, /, conj, convert, size
+module AbstractSpace
+
+import Base:*, ==, +, -, /, conj, convert
 
 const TT = ComplexF64
 
@@ -27,10 +29,11 @@ conj(h ::AbsHilbert) ::AbsHilbert = error("not implemented")
 
 abstract type AbsVector end
 
-space(t ::AbsVector) ::Vector{H} = error("not implemented")
+space(t ::AbsVector) ::Vector{AbsHilbert} = error("not implemented")
 order(t ::AbsVector) ::Int = length(space)
 
 ==(a ::AbsVector, b ::AbsVector) ::Bool = error("not implemented")
+isapprox(a ::AbsVector, b ::AbsVector) ::Bool = error("not implemented")
 
 # field operations
 *(a ::AbsVector, b ::AbsVector) ::AbsVector = error("not implemented")
@@ -53,3 +56,11 @@ convert(::Type{Number}, t ::AbsVector) ::Number = error("not implemented")
 # mathematical functions
 pnorm(t ::AbsVector, p ::Int=2) ::Number = error("not implemented")
 tr(b ::AbsVector, hs ::Vector{AbsHilbert}) ::AbsVector = error("not implemented")
+
+
+# exports
+export TT
+export AbsHilbert, hash, ==, dual, idual, conj
+export AbsVector, space, order, ==, +, -, *, /, dual, idual, conj, morph, convert, pnorm, tr
+
+end

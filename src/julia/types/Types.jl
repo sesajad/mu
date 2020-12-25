@@ -1,6 +1,15 @@
+module Types
+
+import Base:size
+using Test
+
+# ===================
+#       Types
+# ===================
+
+
 # enumeratable (linearly) and known-sized
 # decompose(T), index(::T)::Int, iter(T), size(T), item(::Int)::T
-import Base:size
 
 decompose(::Type{Bool}) = Bool
 size(::Type{Bool}) = (2,) # size of the iterator
@@ -8,7 +17,7 @@ iter(::Type{Bool}) = [false, true]
 index(t ::Bool) ::Int = convert(Int, t) + 1
 item(i ::Int) ::Bool = iter(Bool)[i]
 
-@testset "Boolean iteratable type" begin
+@testset "Types:: Boolean iteratable type" begin
     @test size(Bool) == (2,)
     @test all(x -> item(index(x)) == x, iter(Bool))
     @test index(false) == 1
@@ -28,6 +37,11 @@ index(t ::NTuple{n, T}) where {n, T} = Tuple(index(v) for v in t)
 item(i ::NTuple{n, Int}) where {n, T} = Tuple(item{T}(v) for v in i)
 
 
-@testset "Composite iteratable type" begin
+@testset "Types:: Composite iteratable type" begin
+    @test decompose(Bool) == Bool
     @test size(Tuple{Bool, Bool}) == (2, 2)
+end
+
+export decompose, size, iter, index, item
+
 end

@@ -1,8 +1,11 @@
-include("abstract.jl")
+module FiniteSpace
 
 import LinearAlgebra:I
+import Base:*, ==, +, -, /, conj, convert, isapprox
 
 using Test
+
+using AbstractSpace
 
 
 # ===================
@@ -21,7 +24,7 @@ H(uid ::UInt, dim ::Int) = H(uid, dim, 0)
 H(dim ::Int) ::H = H(rand(UInt), dim, 0)
 dim(h ::H) ::Int = h.dim
 
-@testset "H definition" begin
+@testset "Finite:: H definition" begin
     @test dim(H(4)) == 4
 end
 
@@ -37,7 +40,7 @@ idual(h ::H) ::H = H(h.uid, h.dim, h.duality - 1)
 conj(h ::H) ::H = H(h.uid, h.dim, 1 - h.duality)
 # assumming h.duality is in {0, 1}
 
-@testset "hash and equality of H" begin
+@testset "Finite:: hash and equality of H" begin
     h = H(4)
     @test hash(dual(h)) != hash(h)
     @test h != dual(h)
@@ -70,13 +73,15 @@ space(t ::DenseVector) ::Vector{H} = t.dim_index
 order(t ::DenseVector) ::Int = length(t.dim_index)
 size(t ::DenseVector) ::Tuple = size(t.value)
 
-@testset "DenseVector definition" begin
+@testset "Finite:: DenseVector definition" begin
     h = H(2)
     t = DenseVector([1, 0], [h])
     @test order(t) == 1
 end
 
 ==(a ::DenseVector, b ::DenseVector) ::Bool = pnorm(a - b, 1) == 0
+isapprox(x ::DenseVector, y ::DenseVector; rtol::Real=√eps(), atol::Real=0) = pnorm(x-y) <= max(atol, rtol*max(pnorm(x), pnorm(y)))
+
 
 function *(a ::DenseVector, b ::DenseVector) ::DenseVector
     # WARN not works with duplicate H in t
@@ -109,7 +114,9 @@ function *(a ::DenseVector, b ::DenseVector) ::DenseVector
 end
 
 function +(a ::DenseVector, b ::DenseVector) ::DenseVector
-    b_value = permutedims(b.value, [b.dim_sites[h] for h in a.dim_index])
+    if (order(a) > 0)
+        b_value = permutedims(b.value, [b.dim_sites[h] for h in a.dim_index])
+    end
     DenseVector(a.value + b.value, a.dim_sites, a.dim_index)
 end
 
@@ -117,19 +124,19 @@ dual(t ::DenseVector) ::DenseVector = DenseVector(conj(t.value), [dual(h) for h 
 idual(t ::DenseVector) ::DenseVector = DenseVector(conj(t.value), [idual(h) for h in t.dim_index])
 conj(t ::DenseVector) ::DenseVector = DenseVector(conj(t.value), [conj(h) for h in t.dim_index])
 
-@testset "DenseVector basic operations" begin
+@testset "Finite:: DenseVector basic operations" begin
     h = H(2)
     k = DenseVector([1, 0], [h])
     @test order(k * dual(k)) == 2
     @test order(dual(k) * k) == 0
 end
 
-pnorm(t ::DenseVector, p ::Int=2) ::Number = sum(vec(t.value) .^ p) ^ (1 / p)
+pnorm(t ::DenseVector, p ::Int=2) ::Real = sum(abs.(vec(t.value)) .^ p) ^ (1 / p)
 
 convert(::Type{Number}, t ::DenseVector) ::Number = t.value[]
 convert(::Type{DenseVector}, v ::Number) ::DenseVector = DenseVector(fill(v), H[])
 
-@testset "DenseVector order-0/field operations" begin
+@testset "Finite:: DenseVector order-0/field operations" begin
     h = H(2)
     k0 = DenseVector([1, 0], [h])
     k1 = DenseVector([0, 1], [h])
@@ -137,7 +144,7 @@ convert(::Type{DenseVector}, v ::Number) ::DenseVector = DenseVector(fill(v), H[
     @test convert(Number, dual(k0) * k0) == 1
     @test pnorm(dual(k0) * k1, 1) == 0
     @test pnorm(k0 - k0) == 0
-    @test k0 == k1
+    @test k0 == k0
 end
 
 function morph_DenseVector(from ::Vector{H}, to ::Vector{H}) ::DenseVector
@@ -150,14 +157,14 @@ end
 
 function morph(t ::DenseVector, from ::Vector{H}, to ::Vector{H}) ::DenseVector
     # WARN not works with duplicate H in t
-    rem:: Vector{H} = [hh for hh in t.dim_index if !(hh in from)]
+    rem = H[hh for hh in t.dim_index if !(hh in from)]
     t_value = permutedims(t.value,
         [[t.dim_sites[h] for h in rem]..., [t.dim_sites[f] for f in from]...])
     t_value = reshape(t_value, ([dim(h) for h in rem]..., [dim(h) for h in to]...))
     DenseVector(t_value, [rem..., to...])
 end
 
-@testset "Hilbert space morphing" begin
+@testset "Finite:: Hilbert space morphing" begin
     h1 = H(4)
     h2a = H(2)
     h2b = H(2)
@@ -200,7 +207,7 @@ function tr(b ::DenseVector, hs ::Vector{H}) ::DenseVector
     end
 end
 
-@testset "DenseVector maps operations" begin
+@testset "Finite:: DenseVector maps operations" begin
     h = H(2)
     k0 = DenseVector([1, 0], [h])
     k1 = DenseVector([0, 1], [h])
@@ -209,3 +216,9 @@ end
     @test convert(Number, tr_DenseVector([h]) * op) == 1.5
 end
 
+# exports
+export H, hash, HASHPRIME, ==, dual, idual, conj, dim
+export DenseVector, space, order, ==, +, -, *, /, dual, idual, conj, morph, convert, pnorm, tr
+
+
+end

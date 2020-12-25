@@ -1,0 +1,11 @@
+[default]
+name=Default
+runtime=host
+toolchain=default
+config-opts=
+run-opts=
+prefix=/home/sloth/.cache/gnome-builder/install/mu/host
+app-id=
+postbuild=
+prebuild=
+default=true
